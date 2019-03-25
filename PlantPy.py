@@ -4,6 +4,8 @@ import urllib3
 import paho.mqtt.client as mqtt
 import time
 import datetime
+import os
+import sys
 
 #file_object = open("url.txt", "r")
 #url1 = file_object.read()
@@ -13,23 +15,16 @@ url2 = "http://webplant.azurewebsites.net/api/PlantSensorData2"
 url3 = "http://webplant.azurewebsites.net/api/PlantSensorData3"
 
 headers = {'content-type': 'application/json'}
-broker_address='192.168.1.82'
+broker_address='192.168.1.12'
 
-#Planta1 topics
-p1post = 'vg/planta1/post'
-p1fuktjord = 'vg/planta1/fukt/jord'
-
-    
 ts = int(time.time())
 tim = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-
-                                                
-broker_address='192.168.1.82'
 client = mqtt.Client('P1')
 client.connect(broker_address)
 client.loop_start()
+client.subscribe('vg/post')
 
-for number in range(1,3):
+for number in range(1,4):
     client.subscribe('vg/planta%d/fukt/luft'%(number))
     client.subscribe('vg/planta%d/fukt/jord'%(number))
     client.subscribe('vg/planta%d/temp'%(number))
@@ -124,12 +119,42 @@ dickHum = [changeHum1, changeHum2, changeHum3]
 url = [url1, url2, url3]
 
 
+def getSensorAPI():
+        response1 = requests.get(url[0], headers).json()
+        response2 = requests.get(url[1], headers).json()
+        response3 = requests.get(url[2], headers).json()
+        for m in range(0,10):
+            for n in range(0, len(response3)):
+                
+                postToMQTT('vg/date' ,datetime.datetime.fromtimestamp(response1[0]['Timestamp']).strftime('%Y-%m-%d %H:%M:%S'))
+                postToMQTT('vg/planta'+str(1)+'/fukt/jord1' ,response1[n]['Moist'])
+                postToMQTT('vg/planta'+str(1)+'/fukt/luft1' ,response1[n]['Hum'])
+                postToMQTT('vg/planta'+str(1)+'/temp1' ,response1[n]['Temp'])
+                postToMQTT('vg/planta'+str(1)+'/ljus1' ,response1[n]['Light'])
+                
+                postToMQTT('vg/planta'+str(2)+'/fukt/jord1' ,response2[n]['Moist'])
+                postToMQTT('vg/planta'+str(2)+'/fukt/luft1' ,response2[n]['Hum'])
+                postToMQTT('vg/planta'+str(2)+'/temp1' ,response2[n]['Temp'])
+                postToMQTT('vg/planta'+str(2)+'/ljus1' ,response2[n]['Light'])
+                
+                postToMQTT('vg/planta'+str(3)+'/fukt/jord1' ,response3[n]['Moist'])
+                postToMQTT('vg/planta'+str(3)+'/fukt/luft1' ,response3[n]['Hum'])
+                postToMQTT('vg/planta'+str(3)+'/temp1' ,response3[n]['Temp'])
+                postToMQTT('vg/planta'+str(3)+'/ljus1' ,response3[n]['Light'])            
+                time.sleep(5)
+    
+def postToMQTT(n, m):
+    #response = getSensorAPI()
+    #print(response)
+    print('posted: '+str(n)+'Mess: '+str(m))
+    print(client.publish(n, json.dumps(m)))
+
 def on_message(client, userdata, message):
-    #print("topic: %s, message: %s"%(message.topic, message.payload.decode('utf-8')))
+    print("topic: %s, message: %s"%(message.topic, message.payload.decode('utf-8')))
     
     if(message.topic == 'vg/post'):
-        changeTime();
-        postToMQTT()
+        changeTime()
+        #getSensorAPI()
         
     if((message.topic).startswith('vg/planta1')):
         updateValueFromTopic(0, message)
@@ -139,6 +164,7 @@ def on_message(client, userdata, message):
         updateValueFromTopic(2, message)
 
 def updateValueFromTopic(number, message):
+    changeTime();
     if('ljus' in message.topic):
         print('ljus: '+dickLjus[number](message.payload.decode('utf-8')))
     if('temp' in message.topic):
@@ -147,8 +173,9 @@ def updateValueFromTopic(number, message):
         print('Hum: '+dickHum[number](message.payload.decode('utf-8')))
     if('jord' in message.topic):
         print('Jord: '+dickMoist[number](message.payload.decode('utf-8')))
+        
 
-    
+
 def postToSensorApi():
     
     dick1 = [moist1, moist2, moist3]
@@ -165,24 +192,15 @@ def postToSensorApi():
     
     return post
 
-def getSensorAPI():
-    response = requests.get(url, headers).json()
-    return response
-    
-def postToMQTT():
-    response = getSensorAPI()
-    print(response)
-    print('posted: '+str(response))
-    client.publish('vg/data', json.dumps(response))
 
+getSensorAPI()
 #print(postToSensorApi())
-#print(getSensorAPI())
-client.on_message=on_message
 
+client.on_message=on_message
 from threading import Timer
 
 def timeout():
-    print("-----------------------30 min check----------------------")
+    print("-----------------------30 min check----------------------\n")
     print(postToSensorApi())
     timerfun()
 
